@@ -1,0 +1,17 @@
+{
+  "fecha_descarga": "2025-11-26T15:08:14.175896",
+  "total_registros": 1925372,
+  "total_archivos": 238,
+  "tamano_gb": 0.06,
+  "resumen_categorias": {
+    "metales": 159930,
+    "indices": 226617,
+    "divisas": 374556,
+    "cripto": 514108,
+    "energia": 355084,
+    "etfs": 295077
+  },
+  "peso_por_millon_gb": 0.03,
+  "estimacion_20m_gb": 0.62,
+  "activos_descargados": 80
+}

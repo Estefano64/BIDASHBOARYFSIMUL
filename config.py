@@ -1,6 +1,6 @@
 """
 Configuración de APIs
-Carga las claves de forma segura desde el archivo .env
+Carga las claves de forma segura desde el archivo .env o usa las predefinidas
 """
 import os
 from dotenv import load_dotenv
@@ -8,9 +8,9 @@ from dotenv import load_dotenv
 # Cargar variables de entorno
 load_dotenv()
 
-# API Keys
+# API Keys (con fallback a claves predefinidas)
 API_KEYS = {
-    'newsapi': os.getenv('NEWSAPI_KEY'),
+    'newsapi': os.getenv('NEWSAPI_KEY', 'uvS6HzVfbJavtwuiyQ40cCOAlEysfYaR'),  # API key configurada
     'alphavantage': os.getenv('ALPHAVANTAGE_KEY'),
     'twitter_key': os.getenv('TWITTER_API_KEY'),
     'twitter_secret': os.getenv('TWITTER_API_SECRET'),

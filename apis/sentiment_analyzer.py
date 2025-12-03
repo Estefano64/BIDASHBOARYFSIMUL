@@ -15,7 +15,7 @@ class AnalizadorSentimiento:
     def analizar_texto(self, texto):
         """
         Analizar sentimiento de un texto individual
-        
+
         Returns:
             dict con scores de sentimiento
         """
@@ -30,30 +30,60 @@ class AnalizadorSentimiento:
                 'textblob_subjectivity': 0.0,
                 'sentimiento_label': 'Neutral'
             }
-        
-        texto_str = str(texto)
-        
+
+        texto_str = str(texto).lower()
+
+        # Palabras clave en español para ajustar el sentimiento
+        palabras_positivas = [
+            'sube', 'subir', 'subió', 'aumenta', 'aumentar', 'aumentó', 'crece', 'crecer', 'creció',
+            'récord', 'máximo', 'mejor', 'buena', 'bueno', 'optimista', 'recupera', 'recuperación',
+            'gana', 'ganancia', 'beneficio', 'éxito', 'excelente', 'positivo', 'alcista', 'impulsa'
+        ]
+
+        palabras_negativas = [
+            'baja', 'bajar', 'bajó', 'cae', 'caer', 'cayó', 'disminuye', 'disminuir', 'disminuyó',
+            'crisis', 'pérdida', 'pierde', 'peor', 'mala', 'malo', 'pesimista', 'negativo', 'bajista',
+            'desplome', 'colapso', 'riesgo', 'preocupa', 'conflicto', 'guerra', 'tensión', 'problema'
+        ]
+
+        # Contar palabras clave
+        score_espanol = 0
+        for palabra in palabras_positivas:
+            if palabra in texto_str:
+                score_espanol += 0.1
+
+        for palabra in palabras_negativas:
+            if palabra in texto_str:
+                score_espanol -= 0.1
+
         # VADER (mejor para redes sociales, maneja emojis y slang)
-        vader_scores = self.vader.polarity_scores(texto_str)
-        
+        vader_scores = self.vader.polarity_scores(str(texto))
+
         # TextBlob (mejor para noticias formales)
         try:
-            blob = TextBlob(texto_str)
+            blob = TextBlob(str(texto))
             textblob_polarity = blob.sentiment.polarity
             textblob_subjectivity = blob.sentiment.subjectivity
         except:
             textblob_polarity = 0.0
             textblob_subjectivity = 0.0
-        
-        # Combinar ambos métodos (promedio ponderado)
+
+        # Combinar ambos métodos + análisis español (promedio ponderado)
         # VADER compound va de -1 a 1
         # TextBlob polarity va de -1 a 1
-        sentimiento_final = (vader_scores['compound'] * 0.6 + textblob_polarity * 0.4)
-        
-        # Clasificar
-        if sentimiento_final >= 0.05:
+        # Score español también de -1 a 1 (limitado)
+        score_espanol_limitado = max(-1.0, min(1.0, score_espanol))
+
+        sentimiento_final = (
+            vader_scores['compound'] * 0.3 +
+            textblob_polarity * 0.3 +
+            score_espanol_limitado * 0.4  # Mayor peso al análisis en español
+        )
+
+        # Clasificar con umbral más bajo para textos en español
+        if sentimiento_final >= 0.02:
             label = 'Positivo'
-        elif sentimiento_final <= -0.05:
+        elif sentimiento_final <= -0.02:
             label = 'Negativo'
         else:
             label = 'Neutral'

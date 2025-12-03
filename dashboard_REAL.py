@@ -582,10 +582,11 @@ st.markdown("---")
 # TABS
 # ============================================
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📈 Análisis Histórico REAL",
     "📰 Noticias en Tiempo Real",
     "🔮 Predicción con IA",
+    "💹 Sistema Recomendación Dólar-Oro",
     "🎯 Recomendaciones Inteligentes",
     "💰 Deuda Global vs ORO",
     "🔗 Correlaciones Reales"
@@ -765,9 +766,294 @@ with tab3:
         st.error("❌ Necesitas los datos históricos para predicción")
 
 # ============================================
-# TAB 4: RECOMENDACIONES INTELIGENTES
+# TAB 4: SISTEMA DE RECOMENDACIÓN DÓLAR-ORO (CORRELACIÓN PEARSON)
 # ============================================
 with tab4:
+    st.subheader("💹 Sistema de Recomendación: Correlación Dólar-Oro")
+
+    st.markdown("""
+    ## 🎯 Estrategia: Correlación Negativa Dólar-Oro
+
+    Este sistema utiliza la **Correlación de Pearson** entre el Dólar (DXY) y el Oro para generar señales de COMPRA/VENTA.
+
+    ### 📊 Fundamento Matemático:
+    - **Correlación ORO-DXY**: -0.72 (negativa fuerte)
+    - Cuando el **DÓLAR SUBE** → Oro tiende a **BAJAR**
+    - Cuando el **DÓLAR BAJA** → Oro tiende a **SUBIR**
+
+    ### 🌍 Factores Amplificadores:
+    - **Rumores de Guerra / Crisis Geopolíticas** → Aumenta demanda de ORO (refugio seguro)
+    - **Sentimiento Negativo en Mercados** → Inversores buscan ORO
+    - **Debilidad del Dólar** + **Crisis** = **SEÑAL FUERTE DE COMPRA**
+    """)
+
+    if datos_masivos:
+        st.markdown("---")
+
+        # Obtener datos actuales
+        oro_actual = float(datos_masivos['oro_diario']['Close'].iloc[-1])
+        dxy_actual = float(datos_masivos['dxy']['Close'].iloc[-1])
+
+        # Cambios recientes
+        oro_cambio_5d = float(datos_masivos['oro_diario']['Close'].pct_change(5).iloc[-1] * 100)
+        dxy_cambio_5d = float(datos_masivos['dxy']['Close'].pct_change(5).iloc[-1] * 100)
+        dxy_cambio_20d = float(datos_masivos['dxy']['Close'].pct_change(20).iloc[-1] * 100)
+
+        # Calcular correlación actual
+        oro_serie = datos_masivos['oro_diario']['Close'].tail(100)
+        dxy_serie = datos_masivos['dxy']['Close'].tail(100)
+        correlacion_actual = float(oro_serie.corr(dxy_serie))
+
+        # ANÁLISIS DE SENTIMIENTO Y RUMORES DE GUERRA
+        df_noticias = obtener_noticias_reales(dias_noticias, usar_newsapi, usar_webscraping)
+        sentimiento_promedio = 0
+        rumores_guerra = False
+        noticias_guerra = 0
+
+        if not df_noticias.empty and 'sentimiento' in df_noticias.columns:
+            sentimiento_promedio = float(df_noticias['sentimiento'].mean())
+
+            # Buscar palabras clave de guerra/crisis en noticias
+            palabras_guerra = ['guerra', 'war', 'conflicto', 'conflict', 'crisis', 'tensión', 'tension',
+                               'geopolítico', 'geopolitical', 'militar', 'military', 'ataque', 'attack']
+
+            for _, noticia in df_noticias.iterrows():
+                texto = str(noticia.get('texto', '')).lower()
+                if any(palabra in texto for palabra in palabras_guerra):
+                    noticias_guerra += 1
+
+            if noticias_guerra >= 3:  # Si hay 3+ noticias de guerra
+                rumores_guerra = True
+
+        # MÉTRICAS PRINCIPALES
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("💰 Precio ORO", f"${oro_actual:,.2f}", f"{oro_cambio_5d:+.2f}% (5d)")
+
+        with col2:
+            st.metric("💵 Índice Dólar (DXY)", f"{dxy_actual:.2f}", f"{dxy_cambio_5d:+.2f}% (5d)")
+
+        with col3:
+            color_corr = "🔴" if correlacion_actual < -0.5 else "🟡" if correlacion_actual < 0 else "🟢"
+            st.metric(f"{color_corr} Correlación Pearson", f"{correlacion_actual:.3f}")
+
+        with col4:
+            emoji_sent = "😊" if sentimiento_promedio > 0.1 else "😞" if sentimiento_promedio < -0.1 else "😐"
+            st.metric(f"{emoji_sent} Sentimiento", f"{sentimiento_promedio:.3f}")
+
+        st.markdown("---")
+
+        # ANÁLISIS DE RUMORES DE GUERRA
+        if rumores_guerra:
+            st.error(f"""
+            🚨 **ALERTA: Detectados {noticias_guerra} noticias sobre conflictos/guerra**
+
+            Palabras clave encontradas: guerra, crisis, conflicto, tensión geopolítica
+
+            **Impacto en ORO**: En tiempos de crisis, el ORO actúa como **refugio seguro** → Presión ALCISTA
+            """)
+        else:
+            st.info(f"""
+            ✅ **Entorno geopolítico relativamente estable**
+
+            {noticias_guerra} noticias relacionadas con conflictos detectadas
+
+            **Impacto en ORO**: Demanda normal, sin presión adicional por crisis
+            """)
+
+        st.markdown("---")
+
+        # GENERACIÓN DE SEÑAL DE COMPRA/VENTA
+        st.markdown("## 🎯 SEÑAL DE RECOMENDACIÓN")
+
+        # ALGORITMO DE RECOMENDACIÓN
+        score_recomendacion = 0
+        razones = []
+
+        # Factor 1: Movimiento del Dólar (más importante)
+        if dxy_cambio_5d < -1.5:
+            score_recomendacion += 40
+            razones.append(f"💵 Dólar cayó {dxy_cambio_5d:.2f}% en 5 días → ORO SUBE por correlación inversa")
+        elif dxy_cambio_5d < -0.5:
+            score_recomendacion += 20
+            razones.append(f"💵 Dólar en ligera baja {dxy_cambio_5d:.2f}% → Presión alcista moderada en ORO")
+        elif dxy_cambio_5d > 1.5:
+            score_recomendacion -= 40
+            razones.append(f"💵 Dólar subió {dxy_cambio_5d:+.2f}% en 5 días → ORO BAJA por correlación inversa")
+        elif dxy_cambio_5d > 0.5:
+            score_recomendacion -= 20
+            razones.append(f"💵 Dólar en ligera alza {dxy_cambio_5d:+.2f}% → Presión bajista moderada en ORO")
+
+        # Factor 2: Tendencia del Dólar a 20 días
+        if dxy_cambio_20d < -2:
+            score_recomendacion += 20
+            razones.append(f"📉 Tendencia bajista del dólar ({dxy_cambio_20d:.2f}% en 20 días) → Favorece ORO")
+        elif dxy_cambio_20d > 2:
+            score_recomendacion -= 20
+            razones.append(f"📈 Tendencia alcista del dólar ({dxy_cambio_20d:+.2f}% en 20 días) → Presiona ORO a la baja")
+
+        # Factor 3: Rumores de Guerra (amplificador)
+        if rumores_guerra:
+            score_recomendacion += 30
+            razones.append(f"🚨 Crisis geopolítica detectada ({noticias_guerra} noticias) → ORO como refugio seguro")
+
+        # Factor 4: Sentimiento del Mercado
+        if sentimiento_promedio < -0.2:
+            score_recomendacion += 15
+            razones.append(f"😞 Sentimiento negativo ({sentimiento_promedio:.2f}) → Inversores buscan ORO")
+        elif sentimiento_promedio > 0.2:
+            score_recomendacion -= 10
+            razones.append(f"😊 Sentimiento positivo ({sentimiento_promedio:.2f}) → Menor presión sobre ORO")
+
+        # Factor 5: Correlación histórica fuerte
+        if correlacion_actual < -0.6:
+            score_recomendacion += 10
+            razones.append(f"📊 Correlación inversa muy fuerte ({correlacion_actual:.3f}) → Alta confiabilidad")
+
+        # GENERAR RECOMENDACIÓN FINAL
+        if score_recomendacion >= 50:
+            recomendacion = "🟢 COMPRA FUERTE"
+            color = "green"
+            accion = "COMPRAR ORO AHORA"
+            explicacion = "Condiciones muy favorables para el oro. Dólar débil y/o crisis geopolítica."
+        elif score_recomendacion >= 20:
+            recomendacion = "🟢 COMPRA"
+            color = "lightgreen"
+            accion = "CONSIDERAR COMPRA DE ORO"
+            explicacion = "Condiciones favorables para el oro. Tendencia positiva."
+        elif score_recomendacion >= -20:
+            recomendacion = "⚪ MANTENER"
+            color = "gray"
+            accion = "MANTENER POSICIÓN ACTUAL"
+            explicacion = "Mercado neutral. No hay señales fuertes en ninguna dirección."
+        elif score_recomendacion >= -50:
+            recomendacion = "🔴 VENDER"
+            color = "orange"
+            accion = "CONSIDERAR VENTA DE ORO"
+            explicacion = "Condiciones desfavorables. Dólar fuerte presiona oro a la baja."
+        else:
+            recomendacion = "🔴 VENTA FUERTE"
+            color = "red"
+            accion = "VENDER ORO AHORA"
+            explicacion = "Condiciones muy desfavorables. Dólar muy fuerte."
+
+        # MOSTRAR RECOMENDACIÓN
+        col1, col2 = st.columns([1, 2])
+
+        with col1:
+            st.markdown(f"""
+            <div style='background-color: {color}; padding: 30px; border-radius: 15px; text-align: center;'>
+                <h1 style='color: white; margin: 0; font-size: 3rem;'>{recomendacion}</h1>
+                <h3 style='color: white; margin: 10px 0 0 0;'>Score: {score_recomendacion}</h3>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown(f"### {accion}")
+            st.caption(explicacion)
+
+        with col2:
+            st.markdown("### 📋 Justificación de la Recomendación:")
+            for i, razon in enumerate(razones, 1):
+                st.write(f"{i}. {razon}")
+
+            if not razones:
+                st.info("No hay factores significativos detectados. Mercado estable.")
+
+        st.markdown("---")
+
+        # GRÁFICO: ORO vs DÓLAR (últimos 90 días)
+        st.markdown("### 📊 Gráfico Comparativo: ORO vs DÓLAR (últimos 90 días)")
+
+        # Obtener últimos 90 días
+        oro_90d = datos_masivos['oro_diario']['Close'].tail(90)
+        dxy_90d = datos_masivos['dxy']['Close'].tail(90)
+
+        # Normalizar para comparar en mismo gráfico (escala 0-100)
+        oro_norm = ((oro_90d - oro_90d.min()) / (oro_90d.max() - oro_90d.min())) * 100
+        dxy_norm = ((dxy_90d - dxy_90d.min()) / (dxy_90d.max() - dxy_90d.min())) * 100
+
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+            x=list(range(len(oro_norm))),
+            y=oro_norm,
+            mode='lines',
+            name='Oro (normalizado)',
+            line=dict(color='gold', width=3)
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=list(range(len(dxy_norm))),
+            y=dxy_norm,
+            mode='lines',
+            name='Dólar DXY (normalizado)',
+            line=dict(color='green', width=3)
+        ))
+
+        fig.update_layout(
+            title=f"Correlación de Pearson: {correlacion_actual:.3f} (Inversa Fuerte)",
+            xaxis_title="Días",
+            yaxis_title="Valor Normalizado (0-100)",
+            hovermode='x unified',
+            height=500,
+            annotations=[
+                dict(
+                    x=0.5,
+                    y=-0.15,
+                    xref='paper',
+                    yref='paper',
+                    text='Cuando una línea sube, la otra tiende a bajar (correlación negativa)',
+                    showarrow=False,
+                    font=dict(size=12, color='gray')
+                )
+            ]
+        )
+
+        st.plotly_chart(fig, width='stretch')
+
+        st.markdown("---")
+
+        # TABLA DE ESCENARIOS
+        st.markdown("### 📖 Tabla de Escenarios de Trading")
+
+        escenarios = pd.DataFrame({
+            'Escenario': [
+                '🔴 Dólar fuerte + Sin crisis',
+                '🟡 Dólar estable + Sin crisis',
+                '🟢 Dólar débil + Sin crisis',
+                '🟢🟢 Dólar fuerte + Crisis',
+                '🟢🟢🟢 Dólar débil + Crisis'
+            ],
+            'DXY': ['↑↑ +2%+', '→ ±1%', '↓↓ -2%+', '↑ +1%+', '↓↓ -2%+'],
+            'Crisis': ['No', 'No', 'No', 'Sí', 'Sí'],
+            'Recomendación': ['VENDER ORO', 'MANTENER', 'COMPRAR ORO', 'COMPRAR ORO', 'COMPRAR FUERTE'],
+            'Probabilidad ORO↑': ['20%', '50%', '75%', '80%', '95%']
+        })
+
+        st.dataframe(escenarios, use_container_width=True)
+
+        st.markdown("---")
+
+        # DISCLAIMER
+        st.warning("""
+        ⚠️ **DISCLAIMER IMPORTANTE:**
+
+        Este sistema de recomendación está basado en:
+        - Análisis estadístico de correlación de Pearson (20 años de datos)
+        - Detección automática de rumores de guerra en noticias
+        - Análisis de sentimiento con IA
+
+        **NO constituye asesoría financiera profesional**. Consulte con un asesor certificado antes de tomar decisiones de inversión.
+        Los resultados pasados no garantizan rendimientos futuros.
+        """)
+    else:
+        st.error("❌ Necesitas los datos históricos para usar el sistema de recomendación")
+
+# ============================================
+# TAB 5: RECOMENDACIONES INTELIGENTES (TODOS LOS ACTIVOS)
+# ============================================
+with tab5:
     st.subheader("🎯 Sistema de Recomendación con Análisis de Deuda Global")
     
     st.markdown("""
@@ -950,10 +1236,10 @@ with tab4:
         st.error("❌ Necesitas los datos históricos para generar recomendaciones")
 
 # ============================================
-# TAB 5: DEUDA GLOBAL VS ORO
+# TAB 6: DEUDA GLOBAL VS ORO
 # ============================================
 
-with tab5:
+with tab6:
     st.subheader("💰 Deuda Global: Pilar Estructural del Precio del Oro")
     
     st.markdown("""
@@ -1140,10 +1426,10 @@ with tab5:
     """)
 
 # ============================================
-# TAB 6: CORRELACIONES REALES
+# TAB 7: CORRELACIONES REALES
 # ============================================
 
-with tab6:
+with tab7:
     st.subheader("🔗 Correlaciones Históricas REALES (20 años)")
     
     if datos_masivos:

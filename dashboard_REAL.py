@@ -622,7 +622,7 @@ with tab1:
             height=500
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
         
         # Estadísticas reales
         col1, col2, col3, col4 = st.columns(4)
@@ -900,7 +900,7 @@ with tab4:
             height=400
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
         
         # Análisis de cartera sugerida
         st.markdown("### 💼 Sugerencia de Portafolio Diversificado")
@@ -1032,7 +1032,7 @@ with tab5:
     # PIB Mundial
     fig.add_trace(go.Scatter(
         x=df_hist.index,
-        y=df_hist['pib_mundial_usd'] / 1e12,
+        y=df_hist['pib_mundial'] / 1e12,
         mode='lines+markers',
         name='PIB Mundial',
         line=dict(color='green', width=3),
@@ -1047,7 +1047,7 @@ with tab5:
         height=500
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
     
     # Gráfico de ratio Deuda/PIB
     st.markdown("### 📈 Ratio Deuda/PIB (%)")
@@ -1077,7 +1077,7 @@ with tab5:
         height=400
     )
     
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, width='stretch')
     
     # Impacto en el ORO
     st.markdown("### 🥇 Impacto de la Deuda Global en el Precio del ORO")
@@ -1175,7 +1175,7 @@ with tab6:
                 height=500
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             
             st.markdown("### 💡 Interpretación:")
             st.markdown("""

@@ -12,15 +12,20 @@ from config import API_KEYS
 def obtener_noticias_oro(dias=7, idioma='en'):
     """
     Obtener noticias reales sobre oro desde NewsAPI
-    
+
     Args:
         dias: Número de días hacia atrás para buscar
         idioma: 'en' (inglés) o 'es' (español)
-    
+
     Returns:
         DataFrame con noticias
     """
     try:
+        # Verificar si la API key existe
+        if not API_KEYS.get('newsapi'):
+            print("⚠️ NewsAPI: API key no configurada. Configura NEWSAPI_KEY en el archivo .env")
+            return pd.DataFrame()
+
         # Inicializar cliente
         newsapi = NewsApiClient(api_key=API_KEYS['newsapi'])
         
@@ -69,12 +74,17 @@ def obtener_noticias_oro(dias=7, idioma='en'):
 def obtener_noticias_por_pais(pais='us', dias=7):
     """
     Obtener noticias principales de un país
-    
+
     Args:
         pais: Código de país (us, gb, ar, pe, etc.)
         dias: Días hacia atrás
     """
     try:
+        # Verificar si la API key existe
+        if not API_KEYS.get('newsapi'):
+            print("⚠️ NewsAPI: API key no configurada")
+            return pd.DataFrame()
+
         newsapi = NewsApiClient(api_key=API_KEYS['newsapi'])
         
         noticias = newsapi.get_top_headlines(

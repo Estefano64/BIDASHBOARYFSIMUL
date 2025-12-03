@@ -769,209 +769,377 @@ with tab3:
 # TAB 4: SISTEMA DE RECOMENDACIÓN DÓLAR-ORO (CORRELACIÓN PEARSON)
 # ============================================
 with tab4:
-    st.subheader("💹 Sistema de Recomendación: Correlación Dólar-Oro")
+    st.subheader("💹 Sistema de Recomendación: Guerra + Dólar-Oro")
 
     st.markdown("""
-    ## 🎯 Estrategia: Correlación Negativa Dólar-Oro
+    ## 🎯 Estrategia: Detección de Crisis + Confirmaciones Financieras
 
-    Este sistema utiliza la **Correlación de Pearson** entre el Dólar (DXY) y el Oro para generar señales de COMPRA/VENTA.
+    Este sistema utiliza **NewsAPI como BASE** para detectar menciones de guerra/crisis, validando con señales financieras:
 
-    ### 📊 Fundamento Matemático:
-    - **Correlación ORO-DXY**: -0.72 (negativa fuerte)
-    - Cuando el **DÓLAR SUBE** → Oro tiende a **BAJAR**
-    - Cuando el **DÓLAR BAJA** → Oro tiende a **SUBIR**
+    ### 📊 Metodología:
+    1. **BASE (NewsAPI)**: Intensidad y frecuencia de menciones de guerra/conflictos
+    2. **CONFIRMACIONES FINANCIERAS**:
+       - 🛢️ **Petróleo (WTI)**: ¿Está subiendo por riesgo energético?
+       - 📉 **S&P 500**: ¿Está cayendo por miedo?
+       - 💵 **Dólar (DXY)**: Correlación inversa con oro
+       - ⚠️ **VIX (Fear Index)**: *Pendiente de integrar*
 
-    ### 🌍 Factores Amplificadores:
-    - **Rumores de Guerra / Crisis Geopolíticas** → Aumenta demanda de ORO (refugio seguro)
-    - **Sentimiento Negativo en Mercados** → Inversores buscan ORO
-    - **Debilidad del Dólar** + **Crisis** = **SEÑAL FUERTE DE COMPRA**
+    ### 🎯 Lógica de Señales:
+    - **BUY FUERTE**: Alta mención guerra + Petróleo↑ + S&P500↓ → Alta probabilidad
+    - **HOLD**: Menciones guerra pero sin confirmaciones financieras → Señal débil
+    - **SELL**: Sin crisis + Dólar fuerte → Presión bajista en oro
     """)
 
     if datos_masivos:
         st.markdown("---")
 
-        # Obtener datos actuales
+        # ====================================================================
+        # PASO 1: OBTENER NEWSAPI (BASE) SEPARADO DE WEB SCRAPING
+        # ====================================================================
+
+        df_newsapi = pd.DataFrame()
+        df_webscraping = pd.DataFrame()
+
+        # Obtener NewsAPI como fuente primaria (BASE)
+        if usar_newsapi and APIS_DISPONIBLES:
+            try:
+                with st.spinner("📰 Obteniendo noticias de NewsAPI (BASE)..."):
+                    df_newsapi = obtener_noticias_oro(dias=dias_noticias)
+                    if df_newsapi is not None and not df_newsapi.empty:
+                        # Analizar sentimiento
+                        analizador = AnalizadorSentimiento()
+                        df_newsapi = analizador.analizar_dataframe(df_newsapi, columna_texto='texto')
+            except Exception as e:
+                st.warning(f"⚠️ Error en NewsAPI: {str(e)}")
+
+        # Obtener Web Scraping como fuente secundaria
+        if usar_webscraping:
+            try:
+                with st.spinner("🌐 Obteniendo noticias de Web Scraping (secundario)..."):
+                    df_webscraping = obtener_noticias_scraping()
+                    if df_webscraping is not None and not df_webscraping.empty:
+                        analizador = AnalizadorSentimiento()
+                        df_webscraping = analizador.analizar_dataframe(df_webscraping, columna_texto='texto')
+            except Exception as e:
+                st.warning(f"⚠️ Error en Web Scraping: {str(e)}")
+
+        # ====================================================================
+        # PASO 2: ANÁLISIS DE GUERRA/CRISIS EN NEWSAPI (BASE)
+        # ====================================================================
+
+        palabras_guerra = [
+            'guerra', 'war', 'conflicto', 'conflict', 'crisis', 'tensión', 'tension',
+            'geopolítico', 'geopolitical', 'militar', 'military', 'ataque', 'attack',
+            'invasión', 'invasion', 'bombardeo', 'bombing', 'sanctions', 'sanciones',
+            'iran', 'israel', 'ucrania', 'ukraine', 'rusia', 'russia', 'china', 'taiwan'
+        ]
+
+        # Contar menciones de guerra EN NEWSAPI (no en web scraping)
+        noticias_guerra_newsapi = 0
+        total_noticias_newsapi = 0
+        intensidad_guerra = 0.0
+
+        if not df_newsapi.empty:
+            total_noticias_newsapi = len(df_newsapi)
+
+            for _, noticia in df_newsapi.iterrows():
+                texto = str(noticia.get('texto', '')).lower()
+                # Contar cuántas palabras de guerra aparecen
+                menciones_en_noticia = sum(1 for palabra in palabras_guerra if palabra in texto)
+                if menciones_en_noticia > 0:
+                    noticias_guerra_newsapi += 1
+                    intensidad_guerra += menciones_en_noticia
+
+            # Calcular intensidad: (noticias con guerra / total noticias)
+            if total_noticias_newsapi > 0:
+                intensidad_guerra = (noticias_guerra_newsapi / total_noticias_newsapi) * 100
+
+        # ====================================================================
+        # PASO 3: OBTENER DATOS FINANCIEROS ACTUALES
+        # ====================================================================
+
         oro_actual = float(datos_masivos['oro_diario']['Close'].iloc[-1])
         dxy_actual = float(datos_masivos['dxy']['Close'].iloc[-1])
+        petroleo_actual = float(datos_masivos['petroleo']['Close'].iloc[-1])
+        sp500_actual = float(datos_masivos['sp500']['Close'].iloc[-1])
 
-        # Cambios recientes
+        # Cambios recientes (últimos 5 días)
         oro_cambio_5d = float(datos_masivos['oro_diario']['Close'].pct_change(5).iloc[-1] * 100)
         dxy_cambio_5d = float(datos_masivos['dxy']['Close'].pct_change(5).iloc[-1] * 100)
-        dxy_cambio_20d = float(datos_masivos['dxy']['Close'].pct_change(20).iloc[-1] * 100)
+        petroleo_cambio_5d = float(datos_masivos['petroleo']['Close'].pct_change(5).iloc[-1] * 100)
+        sp500_cambio_5d = float(datos_masivos['sp500']['Close'].pct_change(5).iloc[-1] * 100)
 
-        # Calcular correlación actual
+        # Cambios a 10 días (tendencia media)
+        petroleo_cambio_10d = float(datos_masivos['petroleo']['Close'].pct_change(10).iloc[-1] * 100)
+        sp500_cambio_10d = float(datos_masivos['sp500']['Close'].pct_change(10).iloc[-1] * 100)
+        dxy_cambio_10d = float(datos_masivos['dxy']['Close'].pct_change(10).iloc[-1] * 100)
+
+        # Correlación histórica
         oro_serie = datos_masivos['oro_diario']['Close'].tail(100)
         dxy_serie = datos_masivos['dxy']['Close'].tail(100)
-        correlacion_actual = float(oro_serie.corr(dxy_serie))
+        correlacion_oro_dxy = float(oro_serie.corr(dxy_serie))
 
-        # ANÁLISIS DE SENTIMIENTO Y RUMORES DE GUERRA
-        df_noticias = obtener_noticias_reales(dias_noticias, usar_newsapi, usar_webscraping)
+        # ====================================================================
+        # PASO 4: DETERMINAR CONFIRMACIONES FINANCIERAS
+        # ====================================================================
+
+        # Confirmación 1: Petróleo subiendo (riesgo energético por guerra)
+        petroleo_sube = petroleo_cambio_5d > 1.0 or petroleo_cambio_10d > 2.0
+
+        # Confirmación 2: S&P500 cayendo (miedo en mercados)
+        sp500_cae = sp500_cambio_5d < -1.0 or sp500_cambio_10d < -2.0
+
+        # Confirmación 3: Dólar débil (favorece oro por correlación inversa)
+        dolar_debil = dxy_cambio_5d < -0.5 or dxy_cambio_10d < -1.0
+
+        # Contar confirmaciones
+        confirmaciones = sum([petroleo_sube, sp500_cae, dolar_debil])
+
+        # Sentimiento promedio
         sentimiento_promedio = 0
-        rumores_guerra = False
-        noticias_guerra = 0
+        if not df_newsapi.empty and 'sentimiento' in df_newsapi.columns:
+            sentimiento_promedio = float(df_newsapi['sentimiento'].mean())
 
-        if not df_noticias.empty and 'sentimiento' in df_noticias.columns:
-            sentimiento_promedio = float(df_noticias['sentimiento'].mean())
+        # ====================================================================
+        # MOSTRAR MÉTRICAS PRINCIPALES
+        # ====================================================================
 
-            # Buscar palabras clave de guerra/crisis en noticias
-            palabras_guerra = ['guerra', 'war', 'conflicto', 'conflict', 'crisis', 'tensión', 'tension',
-                               'geopolítico', 'geopolitical', 'militar', 'military', 'ataque', 'attack']
-
-            for _, noticia in df_noticias.iterrows():
-                texto = str(noticia.get('texto', '')).lower()
-                if any(palabra in texto for palabra in palabras_guerra):
-                    noticias_guerra += 1
-
-            if noticias_guerra >= 3:  # Si hay 3+ noticias de guerra
-                rumores_guerra = True
-
-        # MÉTRICAS PRINCIPALES
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
 
         with col1:
-            st.metric("💰 Precio ORO", f"${oro_actual:,.2f}", f"{oro_cambio_5d:+.2f}% (5d)")
+            st.metric("💰 Oro", f"${oro_actual:,.2f}", f"{oro_cambio_5d:+.2f}% (5d)")
 
         with col2:
-            st.metric("💵 Índice Dólar (DXY)", f"{dxy_actual:.2f}", f"{dxy_cambio_5d:+.2f}% (5d)")
+            st.metric("💵 Dólar DXY", f"{dxy_actual:.2f}", f"{dxy_cambio_5d:+.2f}% (5d)")
 
         with col3:
-            color_corr = "🔴" if correlacion_actual < -0.5 else "🟡" if correlacion_actual < 0 else "🟢"
-            st.metric(f"{color_corr} Correlación Pearson", f"{correlacion_actual:.3f}")
+            st.metric("🛢️ Petróleo WTI", f"${petroleo_actual:.2f}", f"{petroleo_cambio_5d:+.2f}% (5d)")
 
         with col4:
-            emoji_sent = "😊" if sentimiento_promedio > 0.1 else "😞" if sentimiento_promedio < -0.1 else "😐"
-            st.metric(f"{emoji_sent} Sentimiento", f"{sentimiento_promedio:.3f}")
+            st.metric("📊 S&P 500", f"{sp500_actual:,.0f}", f"{sp500_cambio_5d:+.2f}% (5d)")
+
+        with col5:
+            emoji_intensidad = "🔴" if intensidad_guerra > 40 else "🟡" if intensidad_guerra > 20 else "🟢"
+            st.metric(f"{emoji_intensidad} Crisis NewsAPI", f"{intensidad_guerra:.0f}%",
+                      f"{noticias_guerra_newsapi}/{total_noticias_newsapi}")
 
         st.markdown("---")
 
-        # ANÁLISIS DE RUMORES DE GUERRA
-        if rumores_guerra:
-            st.error(f"""
-            🚨 **ALERTA: Detectados {noticias_guerra} noticias sobre conflictos/guerra**
+        # ====================================================================
+        # PANEL DE ANÁLISIS DE GUERRA (NEWSAPI - BASE)
+        # ====================================================================
 
-            Palabras clave encontradas: guerra, crisis, conflicto, tensión geopolítica
+        st.markdown("### 📰 Análisis de Crisis en NewsAPI (BASE)")
 
-            **Impacto en ORO**: En tiempos de crisis, el ORO actúa como **refugio seguro** → Presión ALCISTA
-            """)
+        if total_noticias_newsapi > 0:
+            col1, col2 = st.columns([2, 1])
+
+            with col1:
+                if intensidad_guerra > 40:
+                    st.error(f"""
+                    🚨 **ALERTA ALTA: {noticias_guerra_newsapi} de {total_noticias_newsapi} noticias mencionan guerra/conflicto ({intensidad_guerra:.1f}%)**
+
+                    Las noticias de NewsAPI muestran alta intensidad de menciones sobre conflictos geopolíticos.
+                    Esto históricamente impulsa la demanda de ORO como refugio seguro.
+
+                    **Impacto esperado en ORO**: Presión ALCISTA fuerte
+                    """)
+                elif intensidad_guerra > 20:
+                    st.warning(f"""
+                    ⚠️ **ALERTA MEDIA: {noticias_guerra_newsapi} de {total_noticias_newsapi} noticias mencionan guerra/conflicto ({intensidad_guerra:.1f}%)**
+
+                    Hay menciones moderadas de crisis en NewsAPI. Necesitamos confirmaciones financieras para validar la señal.
+
+                    **Impacto esperado en ORO**: Presión ALCISTA moderada
+                    """)
+                else:
+                    st.success(f"""
+                    ✅ **ENTORNO ESTABLE: {noticias_guerra_newsapi} de {total_noticias_newsapi} noticias mencionan conflictos ({intensidad_guerra:.1f}%)**
+
+                    Las noticias de NewsAPI muestran baja intensidad de crisis. Mercado relativamente tranquilo.
+
+                    **Impacto en ORO**: Demanda normal, sin presión adicional por crisis
+                    """)
+
+            with col2:
+                st.markdown("#### 🔍 Confirmaciones:")
+                st.markdown(f"{'✅' if petroleo_sube else '❌'} Petróleo {petroleo_cambio_5d:+.1f}% (5d)")
+                st.markdown(f"{'✅' if sp500_cae else '❌'} S&P500 {sp500_cambio_5d:+.1f}% (5d)")
+                st.markdown(f"{'✅' if dolar_debil else '❌'} Dólar {dxy_cambio_5d:+.1f}% (5d)")
+                st.markdown(f"**Total: {confirmaciones}/3 confirmaciones**")
         else:
-            st.info(f"""
-            ✅ **Entorno geopolítico relativamente estable**
-
-            {noticias_guerra} noticias relacionadas con conflictos detectadas
-
-            **Impacto en ORO**: Demanda normal, sin presión adicional por crisis
-            """)
+            st.warning("⚠️ No hay datos de NewsAPI disponibles. Activa NewsAPI en la configuración.")
 
         st.markdown("---")
 
-        # GENERACIÓN DE SEÑAL DE COMPRA/VENTA
+        # ====================================================================
+        # ALGORITMO DE RECOMENDACIÓN (NUEVO)
+        # ====================================================================
+
         st.markdown("## 🎯 SEÑAL DE RECOMENDACIÓN")
 
-        # ALGORITMO DE RECOMENDACIÓN
         score_recomendacion = 0
         razones = []
+        nivel_confianza = "BAJA"
 
-        # Factor 1: Movimiento del Dólar (más importante)
-        if dxy_cambio_5d < -1.5:
-            score_recomendacion += 40
-            razones.append(f"💵 Dólar cayó {dxy_cambio_5d:.2f}% en 5 días → ORO SUBE por correlación inversa")
-        elif dxy_cambio_5d < -0.5:
-            score_recomendacion += 20
-            razones.append(f"💵 Dólar en ligera baja {dxy_cambio_5d:.2f}% → Presión alcista moderada en ORO")
-        elif dxy_cambio_5d > 1.5:
-            score_recomendacion -= 40
-            razones.append(f"💵 Dólar subió {dxy_cambio_5d:+.2f}% en 5 días → ORO BAJA por correlación inversa")
-        elif dxy_cambio_5d > 0.5:
-            score_recomendacion -= 20
-            razones.append(f"💵 Dólar en ligera alza {dxy_cambio_5d:+.2f}% → Presión bajista moderada en ORO")
-
-        # Factor 2: Tendencia del Dólar a 20 días
-        if dxy_cambio_20d < -2:
-            score_recomendacion += 20
-            razones.append(f"📉 Tendencia bajista del dólar ({dxy_cambio_20d:.2f}% en 20 días) → Favorece ORO")
-        elif dxy_cambio_20d > 2:
-            score_recomendacion -= 20
-            razones.append(f"📈 Tendencia alcista del dólar ({dxy_cambio_20d:+.2f}% en 20 días) → Presiona ORO a la baja")
-
-        # Factor 3: Rumores de Guerra (amplificador)
-        if rumores_guerra:
-            score_recomendacion += 30
-            razones.append(f"🚨 Crisis geopolítica detectada ({noticias_guerra} noticias) → ORO como refugio seguro")
-
-        # Factor 4: Sentimiento del Mercado
-        if sentimiento_promedio < -0.2:
-            score_recomendacion += 15
-            razones.append(f"😞 Sentimiento negativo ({sentimiento_promedio:.2f}) → Inversores buscan ORO")
-        elif sentimiento_promedio > 0.2:
-            score_recomendacion -= 10
-            razones.append(f"😊 Sentimiento positivo ({sentimiento_promedio:.2f}) → Menor presión sobre ORO")
-
-        # Factor 5: Correlación histórica fuerte
-        if correlacion_actual < -0.6:
+        # ===== FACTOR BASE: INTENSIDAD DE GUERRA EN NEWSAPI =====
+        if intensidad_guerra > 40:
+            score_recomendacion += 50
+            razones.append(f"📰 BASE NewsAPI: {intensidad_guerra:.0f}% noticias con menciones de guerra → SEÑAL ALCISTA FUERTE")
+        elif intensidad_guerra > 20:
+            score_recomendacion += 25
+            razones.append(f"📰 BASE NewsAPI: {intensidad_guerra:.0f}% noticias con menciones de guerra → SEÑAL ALCISTA MODERADA")
+        elif intensidad_guerra > 10:
             score_recomendacion += 10
-            razones.append(f"📊 Correlación inversa muy fuerte ({correlacion_actual:.3f}) → Alta confiabilidad")
+            razones.append(f"📰 BASE NewsAPI: {intensidad_guerra:.0f}% menciones de guerra → SEÑAL ALCISTA DÉBIL")
 
-        # GENERAR RECOMENDACIÓN FINAL
-        if score_recomendacion >= 50:
-            recomendacion = "🟢 COMPRA FUERTE"
-            color = "green"
-            accion = "COMPRAR ORO AHORA"
-            explicacion = "Condiciones muy favorables para el oro. Dólar débil y/o crisis geopolítica."
-        elif score_recomendacion >= 20:
-            recomendacion = "🟢 COMPRA"
-            color = "lightgreen"
-            accion = "CONSIDERAR COMPRA DE ORO"
-            explicacion = "Condiciones favorables para el oro. Tendencia positiva."
-        elif score_recomendacion >= -20:
-            recomendacion = "⚪ MANTENER"
-            color = "gray"
-            accion = "MANTENER POSICIÓN ACTUAL"
-            explicacion = "Mercado neutral. No hay señales fuertes en ninguna dirección."
-        elif score_recomendacion >= -50:
-            recomendacion = "🔴 VENDER"
-            color = "orange"
-            accion = "CONSIDERAR VENTA DE ORO"
-            explicacion = "Condiciones desfavorables. Dólar fuerte presiona oro a la baja."
+        # ===== CONFIRMACIÓN 1: PETRÓLEO (riesgo energético) =====
+        if petroleo_sube:
+            if petroleo_cambio_5d > 3.0 or petroleo_cambio_10d > 5.0:
+                score_recomendacion += 30
+                razones.append(f"🛢️ CONFIRMACIÓN: Petróleo +{petroleo_cambio_5d:.1f}% (5d) → Riesgo energético confirmado")
+                nivel_confianza = "ALTA"
+            else:
+                score_recomendacion += 15
+                razones.append(f"🛢️ CONFIRMACIÓN: Petróleo +{petroleo_cambio_5d:.1f}% (5d) → Riesgo energético moderado")
         else:
-            recomendacion = "🔴 VENTA FUERTE"
-            color = "red"
-            accion = "VENDER ORO AHORA"
-            explicacion = "Condiciones muy desfavorables. Dólar muy fuerte."
+            if intensidad_guerra > 20:
+                razones.append(f"⚠️ SIN CONFIRMACIÓN: Petróleo {petroleo_cambio_5d:+.1f}% → Guerra sin impacto energético (señal débil)")
 
-        # MOSTRAR RECOMENDACIÓN
+        # ===== CONFIRMACIÓN 2: S&P500 (miedo en mercados) =====
+        if sp500_cae:
+            if sp500_cambio_5d < -2.0 or sp500_cambio_10d < -3.0:
+                score_recomendacion += 25
+                razones.append(f"📉 CONFIRMACIÓN: S&P500 {sp500_cambio_5d:.1f}% (5d) → Miedo en mercados confirmado")
+                nivel_confianza = "ALTA"
+            else:
+                score_recomendacion += 12
+                razones.append(f"📉 CONFIRMACIÓN: S&P500 {sp500_cambio_5d:.1f}% (5d) → Caída moderada")
+        else:
+            if intensidad_guerra > 20:
+                razones.append(f"⚠️ SIN CONFIRMACIÓN: S&P500 {sp500_cambio_5d:+.1f}% → No hay miedo en mercados (señal débil)")
+
+        # ===== CONFIRMACIÓN 3: DÓLAR (correlación inversa) =====
+        if dolar_debil:
+            if dxy_cambio_5d < -1.0 or dxy_cambio_10d < -2.0:
+                score_recomendacion += 20
+                razones.append(f"💵 CONFIRMACIÓN: Dólar {dxy_cambio_5d:.1f}% (5d) → Correlación inversa favorable")
+            else:
+                score_recomendacion += 10
+                razones.append(f"💵 CONFIRMACIÓN: Dólar {dxy_cambio_5d:.1f}% (5d) → Debilidad moderada")
+        else:
+            if dxy_cambio_5d > 1.0:
+                score_recomendacion -= 20
+                razones.append(f"🔴 CONTRA-SEÑAL: Dólar +{dxy_cambio_5d:.1f}% → Presión bajista en oro")
+
+        # ===== SENTIMIENTO (factor secundario) =====
+        if sentimiento_promedio < -0.1:
+            score_recomendacion += 5
+            razones.append(f"😞 Sentimiento negativo ({sentimiento_promedio:.2f}) → Buscan refugio")
+        elif sentimiento_promedio > 0.2:
+            score_recomendacion -= 5
+
+        # ===== DETERMINAR NIVEL DE CONFIANZA =====
+        if confirmaciones >= 2 and intensidad_guerra > 30:
+            nivel_confianza = "MUY ALTA"
+        elif confirmaciones >= 2 or (confirmaciones == 1 and intensidad_guerra > 40):
+            nivel_confianza = "ALTA"
+        elif confirmaciones == 1 or intensidad_guerra > 20:
+            nivel_confianza = "MEDIA"
+        else:
+            nivel_confianza = "BAJA"
+
+        # ===== GENERAR RECOMENDACIÓN FINAL =====
+        if score_recomendacion >= 70 and confirmaciones >= 2:
+            recomendacion = "🟢 BUY FUERTE"
+            color = "green"
+            accion = "COMPRAR ORO - SEÑAL MUY FUERTE"
+            explicacion = f"Alta intensidad de crisis ({intensidad_guerra:.0f}%) + {confirmaciones}/3 confirmaciones financieras. Probabilidad muy alta de subida."
+        elif score_recomendacion >= 40 and (confirmaciones >= 1 or intensidad_guerra > 30):
+            recomendacion = "🟢 BUY"
+            color = "lightgreen"
+            accion = "COMPRAR ORO - SEÑAL FUERTE"
+            explicacion = f"Crisis detectada ({intensidad_guerra:.0f}%) con {confirmaciones}/3 confirmaciones. Buena probabilidad de subida."
+        elif score_recomendacion >= 20:
+            recomendacion = "🟡 HOLD"
+            color = "#FFD700"
+            accion = "MANTENER - SEÑAL DÉBIL"
+            explicacion = f"Hay menciones de crisis ({intensidad_guerra:.0f}%) pero solo {confirmaciones}/3 confirmaciones. Señal no confiable."
+        elif score_recomendacion >= -10:
+            recomendacion = "⚪ NEUTRAL"
+            color = "gray"
+            accion = "MANTENER - SIN SEÑALES CLARAS"
+            explicacion = "No hay señales claras de crisis ni confirmaciones financieras. Mercado estable."
+        else:
+            recomendacion = "🔴 SELL"
+            color = "red"
+            accion = "VENDER ORO"
+            explicacion = "Dólar fuerte y sin señales de crisis. Presión bajista en oro."
+
+        # ====================================================================
+        # MOSTRAR RECOMENDACIÓN FINAL
+        # ====================================================================
+
         col1, col2 = st.columns([1, 2])
 
         with col1:
             st.markdown(f"""
-            <div style='background-color: {color}; padding: 30px; border-radius: 15px; text-align: center;'>
-                <h1 style='color: white; margin: 0; font-size: 3rem;'>{recomendacion}</h1>
-                <h3 style='color: white; margin: 10px 0 0 0;'>Score: {score_recomendacion}</h3>
+            <div style='background-color: {color}; padding: 30px; border-radius: 15px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
+                <h1 style='color: white; margin: 0; font-size: 2.5rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>{recomendacion}</h1>
+                <h3 style='color: white; margin: 10px 0 0 0;'>Score: {score_recomendacion} pts</h3>
+                <p style='color: white; margin: 5px 0 0 0; font-size: 0.9rem;'>Confianza: {nivel_confianza}</p>
             </div>
             """, unsafe_allow_html=True)
 
             st.markdown(f"### {accion}")
             st.caption(explicacion)
 
-        with col2:
-            st.markdown("### 📋 Justificación de la Recomendación:")
-            for i, razon in enumerate(razones, 1):
-                st.write(f"{i}. {razon}")
+            # Indicador de confirmaciones
+            st.markdown("---")
+            st.markdown("**✅ Confirmaciones Activas:**")
+            if petroleo_sube:
+                st.success(f"🛢️ Petróleo +{petroleo_cambio_5d:.1f}%")
+            if sp500_cae:
+                st.success(f"📉 S&P500 {sp500_cambio_5d:.1f}%")
+            if dolar_debil:
+                st.success(f"💵 Dólar {dxy_cambio_5d:.1f}%")
+            if confirmaciones == 0:
+                st.warning("Sin confirmaciones financieras")
 
-            if not razones:
+        with col2:
+            st.markdown("### 📋 Análisis Detallado:")
+            if razones:
+                for i, razon in enumerate(razones, 1):
+                    st.write(f"{i}. {razon}")
+            else:
                 st.info("No hay factores significativos detectados. Mercado estable.")
+
+            st.markdown("---")
+            st.markdown("#### 📊 Resumen de Datos:")
+            st.markdown(f"- **NewsAPI**: {total_noticias_newsapi} noticias analizadas")
+            st.markdown(f"- **Intensidad Guerra**: {intensidad_guerra:.1f}% de noticias con menciones")
+            st.markdown(f"- **Confirmaciones**: {confirmaciones}/3 señales financieras")
+            st.markdown(f"- **Correlación Oro-Dólar**: {correlacion_oro_dxy:.3f} (inversa)")
 
         st.markdown("---")
 
-        # GRÁFICO: ORO vs DÓLAR (últimos 90 días)
-        st.markdown("### 📊 Gráfico Comparativo: ORO vs DÓLAR (últimos 90 días)")
+        # ====================================================================
+        # GRÁFICO: ACTIVOS MÚLTIPLES (últimos 60 días)
+        # ====================================================================
 
-        # Obtener últimos 90 días
-        oro_90d = datos_masivos['oro_diario']['Close'].tail(90)
-        dxy_90d = datos_masivos['dxy']['Close'].tail(90)
+        st.markdown("### 📊 Evolución de Activos (últimos 60 días)")
+
+        # Obtener últimos 60 días
+        oro_60d = datos_masivos['oro_diario']['Close'].tail(60)
+        dxy_60d = datos_masivos['dxy']['Close'].tail(60)
+        petroleo_60d = datos_masivos['petroleo']['Close'].tail(60)
+        sp500_60d = datos_masivos['sp500']['Close'].tail(60)
 
         # Normalizar para comparar en mismo gráfico (escala 0-100)
-        oro_norm = ((oro_90d - oro_90d.min()) / (oro_90d.max() - oro_90d.min())) * 100
-        dxy_norm = ((dxy_90d - dxy_90d.min()) / (dxy_90d.max() - dxy_90d.min())) * 100
+        oro_norm = ((oro_60d - oro_60d.min()) / (oro_60d.max() - oro_60d.min())) * 100
+        dxy_norm = ((dxy_60d - dxy_60d.min()) / (dxy_60d.max() - dxy_60d.min())) * 100
+        petroleo_norm = ((petroleo_60d - petroleo_60d.min()) / (petroleo_60d.max() - petroleo_60d.min())) * 100
+        sp500_norm = ((sp500_60d - sp500_60d.min()) / (sp500_60d.max() - sp500_60d.min())) * 100
 
         fig = go.Figure()
 
@@ -979,7 +1147,7 @@ with tab4:
             x=list(range(len(oro_norm))),
             y=oro_norm,
             mode='lines',
-            name='Oro (normalizado)',
+            name='ORO',
             line=dict(color='gold', width=3)
         ))
 
@@ -987,64 +1155,129 @@ with tab4:
             x=list(range(len(dxy_norm))),
             y=dxy_norm,
             mode='lines',
-            name='Dólar DXY (normalizado)',
-            line=dict(color='green', width=3)
+            name='Dólar DXY',
+            line=dict(color='green', width=2)
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=list(range(len(petroleo_norm))),
+            y=petroleo_norm,
+            mode='lines',
+            name='Petróleo WTI',
+            line=dict(color='brown', width=2)
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=list(range(len(sp500_norm))),
+            y=sp500_norm,
+            mode='lines',
+            name='S&P 500',
+            line=dict(color='blue', width=2)
         ))
 
         fig.update_layout(
-            title=f"Correlación de Pearson: {correlacion_actual:.3f} (Inversa Fuerte)",
-            xaxis_title="Días",
+            title=f"Correlación Oro-Dólar: {correlacion_oro_dxy:.3f} | Petróleo: {petroleo_cambio_5d:+.1f}% | S&P500: {sp500_cambio_5d:+.1f}%",
+            xaxis_title="Días (últimos 60)",
             yaxis_title="Valor Normalizado (0-100)",
             hovermode='x unified',
             height=500,
-            annotations=[
-                dict(
-                    x=0.5,
-                    y=-0.15,
-                    xref='paper',
-                    yref='paper',
-                    text='Cuando una línea sube, la otra tiende a bajar (correlación negativa)',
-                    showarrow=False,
-                    font=dict(size=12, color='gray')
-                )
-            ]
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
         )
 
         st.plotly_chart(fig, width='stretch')
 
         st.markdown("---")
 
-        # TABLA DE ESCENARIOS
-        st.markdown("### 📖 Tabla de Escenarios de Trading")
+        # ====================================================================
+        # TABLA DE ESCENARIOS (NUEVA LÓGICA)
+        # ====================================================================
+
+        st.markdown("### 📖 Tabla de Escenarios: NewsAPI + Confirmaciones Financieras")
 
         escenarios = pd.DataFrame({
             'Escenario': [
-                '🔴 Dólar fuerte + Sin crisis',
-                '🟡 Dólar estable + Sin crisis',
-                '🟢 Dólar débil + Sin crisis',
-                '🟢🟢 Dólar fuerte + Crisis',
-                '🟢🟢🟢 Dólar débil + Crisis'
+                '🟢🟢🟢 Crisis Alta + 3 Confirmaciones',
+                '🟢🟢 Crisis Alta + 2 Confirmaciones',
+                '🟢 Crisis Media + 2 Confirmaciones',
+                '🟡 Crisis Media + 1 Confirmación',
+                '🟡 Crisis Media + 0 Confirmaciones',
+                '⚪ Sin Crisis + Mercado Normal',
+                '🔴 Sin Crisis + Dólar Fuerte'
             ],
-            'DXY': ['↑↑ +2%+', '→ ±1%', '↓↓ -2%+', '↑ +1%+', '↓↓ -2%+'],
-            'Crisis': ['No', 'No', 'No', 'Sí', 'Sí'],
-            'Recomendación': ['VENDER ORO', 'MANTENER', 'COMPRAR ORO', 'COMPRAR ORO', 'COMPRAR FUERTE'],
-            'Probabilidad ORO↑': ['20%', '50%', '75%', '80%', '95%']
+            'NewsAPI Guerra': ['>40%', '>40%', '20-40%', '20-40%', '20-40%', '<10%', '<10%'],
+            'Petróleo': ['↑↑', '↑', '↑', '↑', '→', '→', '→'],
+            'S&P500': ['↓↓', '↓', '↓', '→', '→', '→', '↑'],
+            'Dólar': ['↓', '→', '↓', '↑', '↑', '→', '↑↑'],
+            'Señal': ['BUY FUERTE', 'BUY', 'BUY', 'HOLD', 'HOLD', 'NEUTRAL', 'SELL'],
+            'Confianza': ['MUY ALTA', 'ALTA', 'ALTA', 'MEDIA', 'BAJA', 'BAJA', 'MEDIA'],
+            'Probabilidad ORO↑': ['90-95%', '80-85%', '75-80%', '60-65%', '45-55%', '40-50%', '20-30%']
         })
 
-        st.dataframe(escenarios, use_container_width=True)
+        st.dataframe(escenarios, width='stretch')
+
+        st.caption("""
+        **Leyenda**:
+        - NewsAPI Guerra: % de noticias con menciones de guerra/conflicto
+        - Confirmaciones: Petróleo↑ + S&P500↓ + Dólar↓
+        - BUY: Alta intensidad + confirmaciones financieras
+        - HOLD: Menciones de guerra pero sin confirmaciones (señal débil)
+        - SELL: Sin crisis + presión bajista del dólar
+        """)
 
         st.markdown("---")
 
+        # ====================================================================
+        # MOSTRAR NOTICIAS DE NEWSAPI (MUESTRA)
+        # ====================================================================
+
+        if not df_newsapi.empty:
+            st.markdown("### 📰 Muestra de Noticias de NewsAPI (BASE)")
+            st.caption(f"Mostrando 5 de {len(df_newsapi)} noticias analizadas")
+
+            for idx, row in df_newsapi.head(5).iterrows():
+                with st.expander(f"📄 {row.get('titulo', 'Sin título')[:80]}..."):
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.markdown(f"**Fuente:** {row.get('fuente', 'Desconocido')}")
+                        st.markdown(f"**Fecha:** {row.get('fecha', 'N/A')}")
+                        if row.get('descripcion'):
+                            st.markdown(f"**Descripción:** {row.get('descripcion')[:200]}...")
+                        if row.get('url'):
+                            st.markdown(f"[🔗 Leer más]({row.get('url')})")
+                    with col2:
+                        sentimiento = row.get('sentimiento', 0)
+                        label = row.get('sentimiento_label', 'Neutral')
+                        color_sent = "🟢" if sentimiento > 0.05 else "🔴" if sentimiento < -0.05 else "⚪"
+                        st.metric(f"{color_sent} Sentimiento", f"{sentimiento:.2f}", label)
+
+        st.markdown("---")
+
+        # ====================================================================
         # DISCLAIMER
+        # ====================================================================
+
         st.warning("""
         ⚠️ **DISCLAIMER IMPORTANTE:**
 
         Este sistema de recomendación está basado en:
-        - Análisis estadístico de correlación de Pearson (20 años de datos)
-        - Detección automática de rumores de guerra en noticias
-        - Análisis de sentimiento con IA
+        - **NewsAPI** como fuente BASE para detectar menciones de guerra/crisis
+        - **Confirmaciones financieras**: Petróleo WTI, S&P 500, Dólar DXY
+        - **Análisis de sentimiento** con VADER + TextBlob
+        - **Correlación histórica** de Pearson (20 años de datos: -0.72 inversa)
 
-        **NO constituye asesoría financiera profesional**. Consulte con un asesor certificado antes de tomar decisiones de inversión.
+        ### ⚠️ Limitaciones Actuales:
+        - **VIX (Fear Index)**: Pendiente de integrar (indicador clave de miedo en mercados)
+        - **Bonos del Tesoro**: No incluido en confirmaciones
+        - **ETFs de Oro**: Flujos no analizados
+
+        **NO constituye asesoría financiera profesional**. Este sistema es experimental y educativo.
+        Consulte con un asesor certificado antes de tomar decisiones de inversión.
         Los resultados pasados no garantizan rendimientos futuros.
         """)
     else:
